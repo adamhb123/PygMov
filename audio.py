@@ -20,7 +20,7 @@ class Audio():
         s[-1] = s[-1].replace('/','').split('.')[0]
         print(s)
         path = lts(s)
-        command = "ffmpeg -i %s -ab 160k -ac 2 -ar 44100 -vn %s.mp3" % (filepath,path)
+        command = "ffmpeg -nostdin -n -i %s -ab 160k -ac 2 -ar 44100 -vn %s.mp3" % (filepath,path)
         subprocess.call(command, shell=True)
         audio = AudioSegment.from_mp3(path+'.mp3')
         array = audio.get_array_of_samples()

@@ -11,12 +11,12 @@ pygame.mixer.init()
 
 class Movie():
     def __init__(self, filepath):
-        mov = skvideo.io.vread(filepath)
         self.movie = []
         self.reverse = 0
         self.cursor = 0
         self.cursor_inc = 0
-        for frame in mov:
+        vr = skvideo.io.vreader(filepath)
+        for frame in vr:
             surface = pygame.surfarray.make_surface(frame)
             surface = pygame.transform.rotate(surface, -90)
             surface = pygame.transform.flip(surface,True,False)
@@ -45,8 +45,8 @@ class Movie():
     def stop(self):
         self.cursor_inc = 0
 
-    def blit(self, screen, pos):
-        screen.blit(self.movie[self.cursor], pos)
+    def blit(self, surface, pos):
+        surface.blit(self.movie[self.cursor], pos)
         self.cursor += self.cursor_inc
         if self.cursor == self.length:
             self.audio.audio.stop()
@@ -54,19 +54,19 @@ class Movie():
             if self.audio is not None:
                 self.audio.audio.play()
 
-    def blit_frame(self, screen, pos, frame=0):
+    def blit_frame(self, surface, pos, frame=0):
         if not frame <= self.length:
             frame = 0
             warnings.warn("At 'blit_frame' call: requested frame number greater than movie length.")
 
-        screen.blit(self.movie[frame], pos)
+        surface.blit(self.movie[frame], pos)
 
 
 def test():
 
     screen = pygame.display.set_mode((1280, 720))
     clock = pygame.time.Clock()
-    mov = Movie("rsc_testing/fbms.mp4")
+    mov = Movie("rsc_testing/aco.mp4")
     mov.play()
     while True:
         screen.fill((255, 255, 255))
