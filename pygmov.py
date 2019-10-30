@@ -1,58 +1,90 @@
-import skvideo, pygame, sys
+import skvideo, pygame, sys, time
 import skvideo.io
+from threading import Thread
 from copy import copy
 from audio import Audio
 import warnings
+import datetime
+
 pygame.init()
 pygame.mixer.init()
 
+cursor, cursor_inc = 0,0
 # THIS REQUIRES THE FFMPEG BINARIES: ffmpeg.exe, ffprobe.exe
 
+def cursor_loop(framerate, length, audio):
+    global cursor_inc, cursor
+    c = pygame.time.Clock()
+    playing = False
+    while True:
+        print(cursor)
+        if cursor_inc != 0 and not playing:
+            audio.play()
+            cursor = 0
+            playing = True
+        elif cursor_inc == 0:
+            audio.stop()
+            playing = False
+
+        cursor += cursor_inc
+        if cursor == length:
+            audio.stop()
+            audio.play()
+            cursor = 0
+        c.tick(framerate)
 
 class Movie():
-    def __init__(self, filepath):
+    def __init__(self, name, filepath):
         self.movie = []
         self.reverse = 0
-        self.cursor = 0
-        self.cursor_inc = 0
         vr = skvideo.io.vreader(filepath)
+        self.framerate = skvideo.io.ffprobe(filepath)['video']['@avg_frame_rate'].split('/')
+        self.framerate = float(int(self.framerate[0])/int(self.framerate[1]))
+        print("FR: %s" % self.framerate)
+        start = datetime.datetime.now()
         for frame in vr:
             surface = pygame.surfarray.make_surface(frame)
             surface = pygame.transform.rotate(surface, -90)
-            surface = pygame.transform.flip(surface,True,False)
+            surface = pygame.transform.flip(surface, True, False)
             self.movie.append(surface)
-        self.unmodified_movie = copy(self.movie)
-        self.length = len(self.movie)
+        end = datetime.datetime.now()
+        print(end - start)
         self.audio = Audio(filepath)
+        self.length = len(self.movie)
+        cursor_loop_thread = Thread(target=cursor_loop, args=(self.framerate, self.length, self.audio.audio))
+        cursor_loop_thread.start()
+        #a = input("FF")
+        self.unmodified_movie = copy(self.movie)
 
-    def set_rotation(self,angle):
+
+    def set_rotation(self, angle):
         for x in range(len(self.movie)):
-            self.movie[x] = pygame.transform.rotate(self.unmodified_movie[x], angle-90)
+            self.movie[x] = pygame.transform.rotate(self.unmodified_movie[x], angle - 90)
 
     def set_scale(self, factor):
-        w,h = self.movie[0].get_size()
+        w, h = self.movie[0].get_size()
         for x in range(len(self.movie)):
-            self.movie[x] = pygame.transform.scale(self.unmodified_movie[x],(w*factor,h*factor))
+            self.movie[x] = pygame.transform.scale(self.unmodified_movie[x], (w * factor, h * factor))
 
-    def set_flip(self,bool_x=0,bool_y=0):
+    def set_flip(self, bool_x=0, bool_y=0):
         for x in range(len(self.movie)):
-            self.movie[x] = pygame.transform.flip(self.unmodified_movie[x],bool_x,bool_y)
+            self.movie[x] = pygame.transform.flip(self.unmodified_movie[x], bool_x, bool_y)
 
     def play(self):
-        self.audio.audio.play()
-        self.cursor_inc = 1
+        global cursor_inc
+        cursor_inc = 1
 
     def stop(self):
-        self.cursor_inc = 0
+        global cursor_inc
+        cursor_inc = 0
+
 
     def blit(self, surface, pos):
-        surface.blit(self.movie[self.cursor], pos)
-        self.cursor += self.cursor_inc
-        if self.cursor == self.length:
-            self.audio.audio.stop()
-            self.cursor = 0
-            if self.audio is not None:
-                self.audio.audio.play()
+        global cursor
+
+        surface.blit(self.movie[cursor], pos)
+        #print(self.length,cursor)
+
 
     def blit_frame(self, surface, pos, frame=0):
         if not frame <= self.length:
@@ -63,12 +95,13 @@ class Movie():
 
 
 def test():
-
     screen = pygame.display.set_mode((1280, 720))
     clock = pygame.time.Clock()
-    mov = Movie("rsc_testing/aco.mp4")
+    mov = Movie("Clockwork", "rsc_testing/fbms.mp4")
     mov.play()
     while True:
+        #print(cursor)
+
         screen.fill((255, 255, 255))
         mov.blit(screen, (0, 0))
         # mov.blit_frame(screen,(100,100),20000)
@@ -76,9 +109,8 @@ def test():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-        #   Has to be adjusted to fit the video...need to be able to adjust the video framerate to match the user
-        #   defined framerate (ex 24->60 fps)
-        clock.tick(25)
+
+        clock.tick(60)
         pygame.display.update()
 
 
