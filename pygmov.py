@@ -49,7 +49,7 @@ class Movie():
             self.movie.append(surface)
         end = datetime.datetime.now()
         print(end - start)
-        self.audio = Audio(filepath)
+        self.audio = Audio(filepath,self.framerate)
         self.length = len(self.movie)
         cursor_loop_thread = Thread(target=cursor_loop, args=(self.framerate, self.length, self.audio.audio))
         cursor_loop_thread.start()
@@ -97,7 +97,7 @@ class Movie():
 def test():
     screen = pygame.display.set_mode((1280, 720))
     clock = pygame.time.Clock()
-    mov = Movie("Clockwork", "rsc_testing/fbms.mp4")
+    mov = Movie("Clockwork", "rsc_testing/fsf.mp4")
     mov.play()
     while True:
         #print(cursor)

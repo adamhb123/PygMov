@@ -13,7 +13,7 @@ def lts(l):
 
 
 class Audio():
-    def __init__(self, filepath):
+    def __init__(self, filepath, framerate):
         print()
         d = "/"
         s = [e + d for e in filepath.split(d) if e]
@@ -23,10 +23,4 @@ class Audio():
         command = "ffmpeg -nostdin -n -i %s -ab 160k -ac 2 -ar 44100 -vn %s.mp3" % (filepath,path)
         subprocess.call(command, shell=True)
         audio = AudioSegment.from_mp3(path+'.mp3')
-        array = audio.get_array_of_samples()
-        array = np.asarray(array)
-        a = array[0:][::2]
-        b = array[1:][::2]
-        array = np.array([a,b])
-        s = pygame.sndarray.array(array)
-        self.audio = pygame.mixer.Sound(s)
+        self.audio = pygame.mixer.Sound(audio.raw_data)
