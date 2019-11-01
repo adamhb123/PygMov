@@ -1,4 +1,4 @@
-import skvideo, pygame, sys, time
+import skvideo, pygame, sys
 import skvideo.io
 from threading import Thread
 from copy import copy
@@ -9,16 +9,22 @@ import datetime
 pygame.init()
 pygame.mixer.init()
 
-cursor, cursor_inc = 0,0
+cursor, cursor_inc = 0, 0
+
+
 # THIS REQUIRES THE FFMPEG BINARIES: ffmpeg.exe, ffprobe.exe
 
 def cursor_loop(framerate, length, audio):
     global cursor_inc, cursor
     c = pygame.time.Clock()
+    #   FOR SYNCING
+    secs_per_frame = 1 / framerate
     playing = False
     while True:
+        #   NOT DONE HERE
+        #   print("Music pos: %d")
         if cursor_inc != 0 and not playing:
-            if isinstance(audio,str):
+            if isinstance(audio, str):
                 if pygame.mixer.music.get_pos() != -1:
                     pygame.mixer.music.unpause()
                 else:
@@ -45,13 +51,13 @@ def cursor_loop(framerate, length, audio):
             cursor = 0
         c.tick(framerate)
 
+
 class Movie():
     def __init__(self, name, filepath, audio_as_sound=False):
         self.movie = []
-        self.reverse = 0
         vr = skvideo.io.vreader(filepath)
         self.framerate = skvideo.io.ffprobe(filepath)['video']['@avg_frame_rate'].split('/')
-        self.framerate = float(int(self.framerate[0])/int(self.framerate[1]))
+        self.framerate = float(int(self.framerate[0]) / int(self.framerate[1]))
         print("FR: %s" % self.framerate)
         start = datetime.datetime.now()
         for frame in vr:
@@ -89,13 +95,11 @@ class Movie():
         global cursor_inc
         cursor_inc = 0
 
-
     def blit(self, surface, pos):
         global cursor
 
         surface.blit(self.movie[cursor], pos)
-        #print(self.length,cursor)
-
+        # print(self.length,cursor)
 
     def blit_frame(self, surface, pos, frame=0):
         if not frame <= self.length:
@@ -111,14 +115,13 @@ def test():
     mov = Movie("Clockwork", "rsc_testing/fsf.mp4")
     mov.play()
     while True:
-        #print(cursor)
-
         screen.fill((255, 255, 255))
         mov.blit(screen, (0, 0))
         # mov.blit_frame(screen,(100,100),20000)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
+                pygame.mixer.quit()
                 sys.exit()
 
         clock.tick(60)
