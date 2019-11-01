@@ -18,22 +18,35 @@ def cursor_loop(framerate, length, audio):
     playing = False
     while True:
         if cursor_inc != 0 and not playing:
-            audio.play()
+            if isinstance(audio,str):
+                if pygame.mixer.music.get_pos() != -1:
+                    pygame.mixer.music.unpause()
+                else:
+                    print("Playing music")
+                    pygame.mixer.music.play()
+            else:
+                audio.play()
             cursor = 0
             playing = True
         elif cursor_inc == 0:
-            audio.stop()
+            if isinstance(audio, str):
+                pygame.mixer.music.pause()
+            else:
+                audio.stop()
             playing = False
 
         cursor += cursor_inc
         if cursor == length:
-            audio.stop()
-            audio.play()
+            if isinstance(audio, str):
+                pygame.mixer.music.rewind()
+            else:
+                audio.stop()
+                audio.play()
             cursor = 0
         c.tick(framerate)
 
 class Movie():
-    def __init__(self, name, filepath):
+    def __init__(self, name, filepath, audio_as_sound=False):
         self.movie = []
         self.reverse = 0
         vr = skvideo.io.vreader(filepath)
@@ -48,12 +61,12 @@ class Movie():
             self.movie.append(surface)
         end = datetime.datetime.now()
         print(end - start)
-        self.audio = Audio(filepath)
+        self.audio = Audio(filepath, as_sound=audio_as_sound)
         self.length = len(self.movie)
         cursor_loop_thread = Thread(target=cursor_loop, args=(self.framerate, self.length, self.audio.audio))
         cursor_loop_thread.start()
         self.unmodified_movie = copy(self.movie)
-
+        print("Movie len: %d" % self.length)
 
     def set_rotation(self, angle):
         for x in range(len(self.movie)):
