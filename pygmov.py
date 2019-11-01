@@ -17,7 +17,6 @@ def cursor_loop(framerate, length, audio):
     c = pygame.time.Clock()
     playing = False
     while True:
-        print(cursor)
         if cursor_inc != 0 and not playing:
             audio.play()
             cursor = 0
@@ -49,11 +48,10 @@ class Movie():
             self.movie.append(surface)
         end = datetime.datetime.now()
         print(end - start)
-        self.audio = Audio(filepath,self.framerate)
+        self.audio = Audio(filepath)
         self.length = len(self.movie)
         cursor_loop_thread = Thread(target=cursor_loop, args=(self.framerate, self.length, self.audio.audio))
         cursor_loop_thread.start()
-        #a = input("FF")
         self.unmodified_movie = copy(self.movie)
 
 
