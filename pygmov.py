@@ -13,37 +13,55 @@ import videoplayer
 pygame.init()
 pygame.mixer.init()
 
-cursor, cursor_inc = 0,0
+cursor, cursor_inc = 0, 0
+
+
 # THIS REQUIRES THE FFMPEG BINARIES: ffmpeg.exe, ffprobe.exe
 
 def cursor_loop(framerate, length, audio):
     global cursor_inc, cursor
     c = pygame.time.Clock()
+    #   FOR SYNCING
+    secs_per_frame = 1 / framerate
     playing = False
     while True:
-        print(cursor)
+        #   NOT DONE HERE
+        #   print("Music pos: %d")
         if cursor_inc != 0 and not playing:
-            audio.play()
+            if isinstance(audio, str):
+                if pygame.mixer.music.get_pos() != -1:
+                    pygame.mixer.music.unpause()
+                else:
+                    print("Playing music")
+                    pygame.mixer.music.play()
+            else:
+                audio.play()
             cursor = 0
             playing = True
         elif cursor_inc == 0:
-            audio.stop()
+            if isinstance(audio, str):
+                pygame.mixer.music.pause()
+            else:
+                audio.stop()
             playing = False
 
         cursor += cursor_inc
         if cursor == length:
-            audio.stop()
-            audio.play()
+            if isinstance(audio, str):
+                pygame.mixer.music.rewind()
+            else:
+                audio.stop()
+                audio.play()
             cursor = 0
         c.tick(framerate)
 
+
 class Movie():
-    def __init__(self, name, filepath):
+    def __init__(self, name, filepath, audio_as_sound=False):
         self.movie = []
-        self.reverse = 0
         vr = skvideo.io.vreader(filepath)
         self.framerate = skvideo.io.ffprobe(filepath)['video']['@avg_frame_rate'].split('/')
-        self.framerate = float(int(self.framerate[0])/int(self.framerate[1]))
+        self.framerate = float(int(self.framerate[0]) / int(self.framerate[1]))
         print("FR: %s" % self.framerate)
         start = datetime.datetime.now()
         for frame in vr:
@@ -53,13 +71,12 @@ class Movie():
             self.movie.append(surface)
         end = datetime.datetime.now()
         print(end - start)
-        self.audio = Audio(filepath,self.framerate)
+        self.audio = Audio(filepath, as_sound=audio_as_sound)
         self.length = len(self.movie)
         cursor_loop_thread = Thread(target=cursor_loop, args=(self.framerate, self.length, self.audio.audio))
         cursor_loop_thread.start()
-        #a = input("FF")
         self.unmodified_movie = copy(self.movie)
-
+        print("Movie len: %d" % self.length)
 
     def set_rotation(self, angle):
         for x in range(len(self.movie)):
@@ -82,13 +99,11 @@ class Movie():
         global cursor_inc
         cursor_inc = 0
 
-
     def blit(self, surface, pos):
         global cursor
 
         surface.blit(self.movie[cursor], pos)
-        #print(self.length,cursor)
-
+        # print(self.length,cursor)
 
     def blit_frame(self, surface, pos, frame=0):
         if not frame <= self.length:
@@ -106,8 +121,6 @@ def test():
     player = videoplayer.VideoPlayer("fbms.mp4","rsc_testing")
     Thread(target=player.update()).start()
     while True:
-        #print(cursor)
-
         screen.fill((255, 255, 255))
         player.render(screen)
 
@@ -116,6 +129,7 @@ def test():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
+                pygame.mixer.quit()
                 sys.exit()
 
         clock.tick(60)
