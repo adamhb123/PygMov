@@ -1,10 +1,14 @@
-import skvideo, pygame, sys, time
+import skvideo, pygame, sys
 import skvideo.io
 from threading import Thread
 from copy import copy
 from audio import Audio
 import warnings
 import datetime
+
+#TESTING VIDEOPLAYER
+import videoplayer
+
 
 pygame.init()
 pygame.mixer.init()
@@ -97,13 +101,17 @@ class Movie():
 def test():
     screen = pygame.display.set_mode((1280, 720))
     clock = pygame.time.Clock()
-    mov = Movie("Clockwork", "rsc_testing/fsf.mp4")
-    mov.play()
+    #mov = Movie("Clockwork", "rsc_testing/fsf.mp4")
+    #mov.play()
+    player = videoplayer.VideoPlayer("fbms.mp4","rsc_testing")
+    Thread(target=player.update()).start()
     while True:
         #print(cursor)
 
         screen.fill((255, 255, 255))
-        mov.blit(screen, (0, 0))
+        player.render(screen)
+
+        #mov.blit(screen, (0, 0))
         # mov.blit_frame(screen,(100,100),20000)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
