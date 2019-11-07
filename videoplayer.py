@@ -1,8 +1,6 @@
 import os
 import subprocess
 import wave
-from _thread import start_new_thread
-
 import pygame
 
 pygame.mixer.pre_init(frequency=44100, size=-16, channels=1)
@@ -20,9 +18,11 @@ class AudioAdapter(object):
         self._audio_sound_array = pygame.sndarray.array(self._audio_array)  # create sound array
         self._audio_sound = pygame.mixer.Sound(self._audio_sound_array)  # load sound
 
+        self._audio_is_playing = False
+
     def set_pos(self, index):
         """
-        set positionof sound
+        set position of sound
         :param index: num in seconds
         :return: None
         """
@@ -30,163 +30,165 @@ class AudioAdapter(object):
             pygame.sndarray.array(self._audio_array[index * self._audio_frame_rate:])
         )
 
+    def play(self):
+        """
+        start playback
+        :return: None
+        """
+        self._audio_sound.play()
+        self._audio_is_playing = True
+
+    def stop(self):
+        """
+        F
+        stop audio playback
+        :return: None
+        """
+        self._audio_sound.stop()
+        self._audio_is_playing = False
+
+    @property
+    def is_playing(self):
+        """
+        returns bool
+        :return: bool
+        """
+        return self._audio_is_playing
+
 
 class VideoPlayer(object):
-    FFMPEG_BINARY = "binaries/ffmpeg.exe"  # hard code path to ffmpeg
-    FFPROBE_BINARY = "binaries/ffprobe.exe"  # hard code path to ffprobe
+    FFMPEG_BINARY = "binaries/ffmpeg.exe"
+    FFPROBE_BINARY = "binaries/ffprobe.exe"
     THREAD_NUM = 4
-    CHUNK_LENGTH_MS = 1000
 
-    def __init__(self, name, path="", resolution=None, pos=(0, 0)):
-        if not os.path.isfile(os.path.join(path, name)):
-            raise SystemExit(f"file or path incorrect {name, path}")
+    def __init__(self, filename, path="", position=(0, 0), resolution=None):
+        if not os.path.isfile(os.path.join(path, filename)):
+            raise FileNotFoundError("File or Path incorrect > ", path, filename)
 
-        # video
-        self._filename = name  # set filename
-        self._path = path  # set path
+        # private arguments
+        self._filename = filename
+        self._path = path
+
+        self.video_data = self._get_video_data()
 
         if resolution is None:
-            self._resize_resolution = self.get_resolution()  # set resize resolution
+            self._resize_resolution = self.video_data["RESOLUTION"]  # get default video resolution to resize image
         else:
-            self._resize_resolution = resolution
+            self._resize_resolution = resolution  # set default resolution
 
-        self.data = self.get_video_info()  # get general information
-        self._fps = self.get_fps()  # set fps
-        self._resolution = self.get_resolution()  # set resolution
-        self._frame_buffer = []  # set frame buffer
-        self._total_frames = self.get_frame_count()  # get total frame count
+        self._fps = self.video_data["FPS"]  # get fps
+        self._total_frames = self.video_data["DURATION"]  # get frame count
+        self._resolution = self.video_data["RESOLUTION"]  # get video resolution
 
-
-       # if not os.path.isfile(os.path.join(path,name)):
-        self._source_file = open(os.path.join(path,name.split(".")[0]+".frames"),"wb")
-
-        for _ in range(self._total_frames):
-            self._source_file.write(pygame.image.tostring(self._read_frame(_)[0],"RGB"))
-        self._source_file.close()
         # audio
-        self._extract_audio()
-        self._audio = AudioAdapter(self._filename, self._path)
+        self._extract_audio()  # extract audio
+        self._audio = AudioAdapter(self._filename, self._path)  # create audio adapter
 
-        self._video_cursor = 0
-        self._last_video_cursor = 0
-        self._buffer_cursor = 0
-        self._is_playing = True
-        self.isrunning = True
+        # private attributes
+        self._image = pygame.Surface(self._resize_resolution)  # set empty surface
+        self._image.fill((255, 0, 0))  # fill image in case it remains empty
+        self._rect = self._image.get_rect(topleft=position)  # get boundary
 
-        self._buffer_is_ready = False
-
-        self.image = pygame.Surface(self._resize_resolution)
-        self.rect = self.image.get_rect(topleft=pos)
+        # frame pipe
+        self._pipe = self._open_frame_pipe(0)  # open pipe at the beginning of the video
 
         # time management
         self._internal_current_time = 0
-        self._last_frame_tick = 0
         self._delta_time = 0
+        self._last_frame_time = 0
 
-        self._preload_pattern(0, 200)  # preload pattern
+        # video management
+        self._video_cursor = 0  # current video cursor
+        self._last_video_cursor = 0  # last video cursor
+        self._frame_buffer_size = self._resolution[0] * self._resolution[1] * 3  # set frame buffer size for rgb24
+        self._image_format = "RGB"
+        self._video_is_playing = False
 
-    def _set_pos(self, index):
+        # audio management
+
+    def play(self):
         """
-        set position of video in seconds
-        :param index: int
+        start video and audio call back
+        :return: none
+        """
+        self._video_is_playing = True
+
+    def stop(self):
+        """
+        stop video and audio playback
         :return: None
         """
-        self._video_cursor = index  # preload and clear frames todo
-        self._audio.set_pos(index)
-
-    def _preload_pattern(self, start, end):
-        """
-        preload a given amount of frames
-        :param index: amount of frames starting from 0
-        :return:
-        """
-        self._frame_buffer.extend(self._read_frame(start, end))
-        self._buffer_cursor = end
-
-    # this is all wrong
-    def _buffer_video_frames(self):
-        """
-        keep track of frames inside buffer
-        :return: None
-        """
-        self._frame_buffer.extend(self._read_frame(self._buffer_cursor, 25))
-        self._buffer_cursor += 25
-
-    # how dare yoi
+        self._video_is_playing = False
+        self._audio.stop()
 
     def update(self):
         """
-        mainloop running in a thread for changing frames etx
+        update time and frames
         :return: None
         """
         self._internal_current_time = pygame.time.get_ticks()
-        self._delta_time = (self._internal_current_time - self._last_frame_tick) / 1000.0
+        self._delta_time = (self._internal_current_time - self._last_frame_time) / 1000.0  # calc delta time
+        if self._video_is_playing:
+            if not self._audio.is_playing:
+                self._audio.play()
 
-        if self._is_playing:
-            self._video_cursor += self._delta_time * self._fps
+            self._video_cursor += self._delta_time * self._fps  # increase video cursor
             if int(self._video_cursor) != self._last_video_cursor:
-                if self._video_cursor <= self._total_frames:
-                    self.image = self._frame_buffer[0]
-                    self._frame_buffer.pop(0)
+                if self._last_video_cursor < self._total_frames:
+                    raw_image_buffer = self._pipe.stdout.read(self._frame_buffer_size)
+                    self._image = pygame.image.frombuffer(raw_image_buffer, self._resolution, self._image_format)
+                    self._scale()
                     self._last_video_cursor = int(self._video_cursor)
-                    if len(self._frame_buffer) < 225:
-                        self._buffer_video_frames()
 
-        self._last_frame_tick = self._internal_current_time
-        print(len(self._frame_buffer))
-
-    def play(self):
-        """set music to play
-        :return:None
-        """
-        self._is_playing = True
+        self._last_frame_time = self._internal_current_time  # set last frame time
 
     def render(self, surface):
         """
-        render frame to a certain surface
-        :return:None
-        """
-        surface.blit(self.scale(), self.rect)
-
-    def scale(self):
-        """
-        scale to the resolution
-        :return: new pg image
-        """
-        return pygame.transform.scale(self.image, self._resize_resolution)
-
-    @property
-    def resolution(self):
-        """
-        get resolution
-        :return: self.resolution
-        """
-        return self._resolution
-
-    @resolution.setter
-    def resolution(self, value):
-        """ resolution setter
+        render image to a certain surface
+        :param surface: pg.Surface
         :return: None
         """
-        self._resize_resolution = value
+        surface.blit(self._image, self._rect)
 
-    def get_fps(self):
-        """
-        get the fps count of a video file
-        :return: fps
-        """
-        command = [self.FFPROBE_BINARY,
-                   '-v', '0', '-of', 'csv=p=0',
-                   '-select_streams', 'v:0',
-                   '-show_entries', 'stream=r_frame_rate',
-                   os.path.join(self._path, self._filename)]
+    def _scale(self):
+        self._image = pygame.transform.scale(self._image, self._resize_resolution)
 
-        return int(subprocess.check_output(command).decode("utf-8").split("/")[0])
-
-    def get_resolution(self):
+    def _open_frame_pipe(self, index):
         """
-        get resolution of the a video file
-        :return: resolution
+        open ffmpeg frame pipe at index
+        :param index: start index
+        :return: PIP obj
+        """
+        command = [self.FFMPEG_BINARY,
+                   '-loglevel', 'fatal',
+                   '-ss', str(index / self._fps),
+                   '-i', os.path.join(self._path, self._filename),
+                   '-threads', str(self.THREAD_NUM),
+                   '-vf', 'scale=%d:%d' % (self._resolution[0], self._resolution[1]),
+                   '-vframes', str(self._total_frames),
+                   '-f', 'image2pipe',
+                   '-pix_fmt', 'rgb24',
+                   '-vcodec', 'rawvideo', '-']
+
+        return subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def _get_video_data(self):
+        """
+        get the video data
+        :return: dictionary containing video data
+        """
+        info_dictionary = {
+            "FILE": os.path.join(self._path, self._filename),  # fill file
+            "RESOLUTION": self._get_video_resolution(),  # fill video resolution
+            "FPS": self._get_video_fps(),  # fill fps
+            "DURATION": self._get_total_frames(),  # get total frames
+        }
+        return info_dictionary
+
+    def _get_video_resolution(self):
+        """
+        get video resolution
+        :return: (width:int , height: int)
         """
         command = [self.FFPROBE_BINARY,
                    '-v', 'error', '-select_streams',
@@ -197,10 +199,24 @@ class VideoPlayer(object):
 
         return [int(res) for res in subprocess.check_output(command).decode("utf-8").split("x")]
 
-    def get_frame_count(self):
+    def _get_video_fps(self):
         """
-        get total frame count
-        :return: total frames
+        get video frame per second
+        :return: int(fps)
+        """
+        command = [self.FFPROBE_BINARY,
+                   '-v', '0', '-of', 'csv=p=0',
+                   '-select_streams', 'v:0',
+                   '-show_entries', 'stream=r_frame_rate',
+                   os.path.join(self._path, self._filename)]
+
+        fps = int(subprocess.check_output(command).decode("utf-8").split("/")[0])
+        return fps / 1000 if fps > 1000 else fps
+
+    def _get_total_frames(self):
+        """
+        get total frame count of file
+        :return: int(nFrames)
         """
         command = [self.FFPROBE_BINARY,
                    '-v', 'error', '-select_streams',
@@ -222,76 +238,3 @@ class VideoPlayer(object):
 
         if not os.path.isfile(os.path.join(self._path, self._filename.split(".")[0] + ".wav")):
             subprocess.call(command)
-
-    def _read_frame(self, frame_index, num_frames=1):
-        """
-        read a frame from a certain position
-        queue frames to buffer
-        :return:None 
-        """
-        if frame_index + num_frames > self._total_frames:
-            num_frames = self._total_frames - frame_index
-
-        command = [self.FFMPEG_BINARY,
-                   '-loglevel', 'fatal',
-                   '-ss', str(frame_index / self._fps),
-                   '-i', os.path.join(self._path, self._filename),
-                   '-threads', str(self.THREAD_NUM),
-                   '-vf', 'scale=%d:%d' % (self._resolution[0], self._resolution[1]),
-                   '-vframes', str(num_frames),
-                   '-f', 'image2pipe',
-                   '-pix_fmt', 'rgb24',
-                   '-vcodec', 'rawvideo', '-']
-
-        pipe = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        tmplist = []
-        for _ in range(num_frames):
-            raw_image = pipe.stdout.read(self._resolution[0] * self._resolution[1] * 3)
-            tmplist.append(pygame.image.frombuffer(raw_image, self._resolution, "RGB"))
-        pipe.stdout.flush()
-        return tmplist
-
-    @staticmethod
-    def __parse_probe(info_dict,output):
-        """
-        parses probe output
-        :return:None
-        """
-        for n in range(len(output)):
-            output[n].replace('\r','')
-            try:
-                info_dict['resolution'] = int(output[n]),int(output[n+1])
-            except (TypeError,ValueError):
-                if output[n].strip() != "0/0":
-                    try:
-                        int(output[n])
-                    except (TypeError,ValueError):
-                        if "/" in output[n]:
-                            info_dict['fps'] = float(output[n].split('/')[0]) / float(output[n].split('/')[1])
-                        elif len(output[n]) != 0:
-                            print("O: %s" % output[n])
-                            info_dict['duration'] = output[n].replace('\r','')
-            except IndexError:
-                pass
-
-    def get_video_info(self):
-        """
-        get important video information
-        :return: info dict
-        """
-        info_dict = {}
-        command = [self.FFPROBE_BINARY,
-                   '-v', 'fatal',
-                   '-show_entries', 'stream=width,height,r_frame_rate,duration',
-                   '-of', 'default=noprint_wrappers=1:nokey=1',
-                   os.path.join(self._path, self._filename), '-sexagesimal']
-
-        pipe = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        output, err = pipe.communicate()
-        if (err): print(err);return None;
-        output = output.decode("utf-8").split('\n')
-        info_dict['file'] = os.path.join(self._path, self._filename)
-        self.__parse_probe(info_dict, output)
-        print(output)
-        print(info_dict)
-        return info_dict
